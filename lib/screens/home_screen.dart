@@ -9,6 +9,7 @@ import '../widgets/document_card.dart';
 import 'document_detail_screen.dart';
 import 'id_card_scanner_screen.dart';
 import 'qr_scanner_screen.dart';
+import 'about_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -417,6 +418,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: _isAppLockEnabled ? AppTheme.primary : Colors.grey),
                   tooltip: 'Toggle App Lock',
                   onPressed: _toggleAppLock,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.info_outline),
+                  tooltip: 'About App & Developer',
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AboutScreen()),
+                  ),
                 ),
               ],
       ),
