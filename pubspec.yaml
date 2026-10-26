@@ -12,7 +12,7 @@ dependencies:
 
   # Google ML Kit Document Scanner & OCR
   google_mlkit_document_scanner: ^0.2.0
-  google_mlkit_text_recognition: ^0.13.0
+  google_mlkit_text_recognition: ^0.14.0
   google_mlkit_barcode_scanning: ^0.13.0
 
   # Security & Biometrics
@@ -46,6 +46,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  test: ^1.24.0
   flutter_lints: ^3.0.0
 
 flutter:
