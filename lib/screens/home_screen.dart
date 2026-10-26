@@ -273,7 +273,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       setState(() => _selectedTag = tag);
                       _applyFilter();
                     },
-                    selectedColor: AppTheme.primary.withOpacity(0.15),
+                    selectedColor: AppTheme.primary.withValues(alpha: 0.15),
                     checkmarkColor: AppTheme.primary,
                     labelStyle: TextStyle(
                       color: isSelected ? AppTheme.primary : Colors.grey.shade700,
@@ -346,7 +346,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               padding: const EdgeInsets.all(28),
               decoration: BoxDecoration(
-                color: AppTheme.primary.withOpacity(0.08),
+                color: AppTheme.primary.withValues(alpha: 0.08),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.document_scanner_outlined, size: 64, color: AppTheme.primary),

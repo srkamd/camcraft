@@ -11,17 +11,16 @@ class ScannerService {
   Future<List<String>> startDocumentScan({int pageLimit = 20}) async {
     try {
       final options = DocumentScannerOptions(
-        documentFormat: DocumentFormat.all, // Generates JPEG + PDF
+        documentFormat: DocumentFormat.jpeg,
         mode: ScannerMode.full,            // Full editing UI (crop, filters, rotation)
         pageLimit: pageLimit,
-        isGalleryImportAllowed: true,
       );
 
       final documentScanner = DocumentScanner(options: options);
       final DocumentScanningResult result = await documentScanner.scanDocument();
 
-      if (result.images != null && result.images!.isNotEmpty) {
-        return await _copyImagesToAppDir(result.images!);
+      if (result.images.isNotEmpty) {
+        return await _copyImagesToAppDir(result.images);
       }
     } catch (e) {
       print('ScannerService scan error: $e');
