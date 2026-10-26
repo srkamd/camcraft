@@ -13,6 +13,13 @@ dependencies:
   # Google ML Kit Document Scanner & OCR
   google_mlkit_document_scanner: ^0.2.0
   google_mlkit_text_recognition: ^0.13.0
+  google_mlkit_barcode_scanning: ^0.13.0
+
+  # Security & Biometrics
+  local_auth: ^2.2.0
+
+  # Utilities
+  url_launcher: ^6.3.0
 
   # PDF generation and viewing
   pdf: ^3.10.8
