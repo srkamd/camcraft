@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import '../models/scanned_document.dart';
@@ -8,6 +9,7 @@ import '../services/scanner_service.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import 'ocr_result_screen.dart';
+import 'signature_screen.dart';
 
 class DocumentDetailScreen extends StatefulWidget {
   final ScannedDocument document;
@@ -52,10 +54,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
           decoration: const InputDecoration(labelText: 'Document Title'),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
             onPressed: () => Navigator.pop(context, controller.text.trim()),
@@ -74,67 +73,282 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     }
   }
 
-  Future<void> _exportPdf({bool shareAfter = false}) async {
+  /// Show Modern PDF Export Dialog with Compression & Password Protection
+  Future<void> _showPdfExportSheet({bool shareDirectly = false}) async {
     final watermarkController = TextEditingController();
-    String? watermark;
+    final passwordController = TextEditingController();
+    bool enablePassword = false;
+    PdfQuality selectedQuality = PdfQuality.standard;
 
-    if (!shareAfter) {
-      watermark = await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('PDF Options'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
+    final shouldProceed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Container(
+            padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      const Icon(Icons.picture_as_pdf, color: AppTheme.primary, size: 28),
+                      const SizedBox(width: 10),
+                      Text(
+                        shareDirectly ? 'Share PDF Document' : 'PDF Export Options',
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Quality / Compression Options
+                  const Text('File Compression & Quality:', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      _buildQualityChip(
+                        label: 'Standard',
+                        subtitle: 'Best Balance',
+                        quality: PdfQuality.standard,
+                        selected: selectedQuality,
+                        onTap: () => setSheetState(() => selectedQuality = PdfQuality.standard),
+                      ),
+                      const SizedBox(width: 8),
+                      _buildQualityChip(
+                        label: 'Compact',
+                        subtitle: 'Smallest MB',
+                        quality: PdfQuality.compact,
+                        selected: selectedQuality,
+                        onTap: () => setSheetState(() => selectedQuality = PdfQuality.compact),
+                      ),
+                      const SizedBox(width: 8),
+                      _buildQualityChip(
+                        label: 'Original',
+                        subtitle: 'High Res',
+                        quality: PdfQuality.high,
+                        selected: selectedQuality,
+                        onTap: () => setSheetState(() => selectedQuality = PdfQuality.high),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Watermark Option
+                  TextField(
+                    controller: watermarkController,
+                    decoration: const InputDecoration(
+                      labelText: 'Watermark (Optional)',
+                      hintText: 'e.g. Confidential, Official, My Name',
+                      prefixIcon: Icon(Icons.branding_watermark, size: 20),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Password Protection Option
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Password Protection', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: const Text('Lock PDF with AES encryption', style: TextStyle(fontSize: 12)),
+                    value: enablePassword,
+                    activeColor: AppTheme.primary,
+                    onChanged: (val) => setSheetState(() => enablePassword = val),
+                  ),
+                  if (enablePassword)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: TextField(
+                        controller: passwordController,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Set PDF Password',
+                          prefixIcon: Icon(Icons.lock_outline, size: 20),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 24),
+
+                  // Export Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: AppTheme.primary,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: () => Navigator.pop(context, true),
+                      icon: Icon(shareDirectly ? Icons.share : Icons.file_download_outlined, color: Colors.white),
+                      label: Text(
+                        shareDirectly ? 'Generate & Share' : 'Generate & Open PDF',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    if (shouldProceed == true) {
+      final watermark = watermarkController.text.trim();
+      final password = enablePassword ? passwordController.text.trim() : null;
+
+      setState(() => _isGeneratingPdf = true);
+      try {
+        final pdfPath = await _pdfService.generatePdf(
+          imagePaths: _doc.pagePaths,
+          title: _doc.title,
+          watermarkText: watermark.isNotEmpty ? watermark : null,
+          password: (password != null && password.isNotEmpty) ? password : null,
+          quality: selectedQuality,
+        );
+
+        _doc.pdfPath = pdfPath;
+        await _storageService.updateDocument(_doc);
+
+        if (shareDirectly) {
+          await _pdfService.sharePdf(pdfPath);
+        } else {
+          await _pdfService.openPdf(pdfPath);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('PDF Error: $e')));
+        }
+      } finally {
+        if (mounted) setState(() => _isGeneratingPdf = false);
+      }
+    }
+  }
+
+  Widget _buildQualityChip({
+    required String label,
+    required String subtitle,
+    required PdfQuality quality,
+    required PdfQuality selected,
+    required VoidCallback onTap,
+  }) {
+    final isSelected = quality == selected;
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? AppTheme.primary.withOpacity(0.12) : Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isSelected ? AppTheme.primary : Colors.transparent,
+              width: 2,
+            ),
+          ),
+          child: Column(
             children: [
-              TextField(
-                controller: watermarkController,
-                decoration: const InputDecoration(
-                  labelText: 'Watermark (Optional)',
-                  hintText: 'e.g. Confidential, ScanCraft',
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: isSelected ? AppTheme.primary : Colors.black87,
                 ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, null),
-              child: const Text('No Watermark'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
-              onPressed: () => Navigator.pop(context, watermarkController.text.trim()),
-              child: const Text('Generate PDF', style: TextStyle(color: Colors.white)),
-            ),
-          ],
         ),
-      );
-    }
+      ),
+    );
+  }
 
-    setState(() => _isGeneratingPdf = true);
+  /// Launch Signature Screen and stamp onto current page
+  Future<void> _openSignatureTool() async {
+    if (_doc.pagePaths.isEmpty) return;
+
+    final Uint8List? signaturePng = await Navigator.push<Uint8List>(
+      context,
+      MaterialPageRoute(builder: (context) => const SignatureScreen()),
+    );
+
+    if (signaturePng != null && mounted) {
+      await _stampSignatureOnCurrentPage(signaturePng);
+    }
+  }
+
+  Future<void> _stampSignatureOnCurrentPage(Uint8List signatureBytes) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(color: AppTheme.primary),
+      ),
+    );
 
     try {
-      final pdfPath = await _pdfService.generatePdf(
-        imagePaths: _doc.pagePaths,
-        title: _doc.title,
-        watermarkText: (watermark != null && watermark.isNotEmpty) ? watermark : null,
-      );
+      final pagePath = _doc.pagePaths[_selectedPageIndex];
+      final pageFile = File(pagePath);
+      final pageBytes = await pageFile.readAsBytes();
 
-      _doc.pdfPath = pdfPath;
-      await _storageService.updateDocument(_doc);
+      img.Image? pageImg = img.decodeImage(pageBytes);
+      img.Image? signImg = img.decodeImage(signatureBytes);
 
-      if (shareAfter) {
-        await _pdfService.sharePdf(pdfPath);
-      } else {
-        await _pdfService.openPdf(pdfPath);
+      if (pageImg != null && signImg != null) {
+        // Resize signature to fit cleanly on the bottom right of the page
+        final targetSignWidth = (pageImg.width * 0.32).toInt();
+        final scaledSign = img.copyResize(signImg, width: targetSignWidth);
+
+        // Place on Bottom Right with margin
+        final posX = pageImg.width - scaledSign.width - (pageImg.width * 0.08).toInt();
+        final posY = pageImg.height - scaledSign.height - (pageImg.height * 0.08).toInt();
+
+        img.compositeImage(pageImg, scaledSign, dstX: posX, dstY: posY);
+
+        // Overwrite page with signed image
+        await pageFile.writeAsBytes(img.encodeJpg(pageImg, quality: 95));
+
+        if (!mounted) return;
+        Navigator.pop(context); // close loader
+        setState(() {}); // refresh preview
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Signature stamped successfully onto page!'),
+            backgroundColor: AppTheme.primary,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('PDF Error: $e')),
-        );
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error stamping signature: $e')));
       }
-    } finally {
-      if (mounted) setState(() => _isGeneratingPdf = false);
     }
   }
 
@@ -145,8 +359,14 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(color: AppTheme.primary),
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(color: AppTheme.primary),
+            SizedBox(width: 20),
+            Text('Optimizing & Extracting Text...'),
+          ],
+        ),
       ),
     );
 
@@ -178,9 +398,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         setState(() {}); // Refresh preview
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Rotate error: $e')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Rotate error: $e')));
     }
   }
 
@@ -239,10 +457,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Flexible(
-                child: Text(
-                  _doc.title,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                child: Text(_doc.title, overflow: TextOverflow.ellipsis),
               ),
               const SizedBox(width: 6),
               const Icon(Icons.edit, size: 16, color: Colors.grey),
@@ -258,7 +473,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
           IconButton(
             icon: const Icon(Icons.share_outlined),
             tooltip: 'Share PDF',
-            onPressed: () => _exportPdf(shareAfter: true),
+            onPressed: () => _showPdfExportSheet(shareDirectly: true),
           ),
         ],
       ),
@@ -269,7 +484,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                 children: [
                   CircularProgressIndicator(color: AppTheme.primary),
                   SizedBox(height: 16),
-                  Text('Generating high-quality PDF...'),
+                  Text('Processing & generating PDF...', style: TextStyle(fontWeight: FontWeight.bold)),
                 ],
               ),
             )
@@ -284,7 +499,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.06),
+                          color: Colors.black.withOpacity(0.06),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -302,26 +517,32 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                   ),
                 ),
 
-                // Page Actions Row (Rotate, OCR, Delete)
+                // Page Actions Row: Rotate, E-Sign, OCR, Delete
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      TextButton.icon(
-                        onPressed: _rotatePage,
-                        icon: const Icon(Icons.rotate_right, color: AppTheme.primary),
-                        label: const Text('Rotate', style: TextStyle(color: AppTheme.primary)),
+                      _buildActionButton(
+                        icon: Icons.draw_outlined,
+                        label: 'E-Sign',
+                        onTap: _openSignatureTool,
                       ),
-                      TextButton.icon(
-                        onPressed: _runOcrOnCurrentPage,
-                        icon: const Icon(Icons.text_fields, color: AppTheme.primary),
-                        label: const Text('Extract Text (OCR)', style: TextStyle(color: AppTheme.primary)),
+                      _buildActionButton(
+                        icon: Icons.rotate_right,
+                        label: 'Rotate',
+                        onTap: _rotatePage,
                       ),
-                      TextButton.icon(
-                        onPressed: _deleteCurrentPage,
-                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                        label: const Text('Delete Page', style: TextStyle(color: Colors.redAccent)),
+                      _buildActionButton(
+                        icon: Icons.text_fields,
+                        label: 'Extract Text',
+                        onTap: _runOcrOnCurrentPage,
+                      ),
+                      _buildActionButton(
+                        icon: Icons.delete_outline,
+                        label: 'Delete',
+                        color: Colors.redAccent,
+                        onTap: _deleteCurrentPage,
                       ),
                     ],
                   ),
@@ -368,7 +589,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                     color: Colors.white,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
+                        color: Colors.black.withOpacity(0.04),
                         blurRadius: 8,
                         offset: const Offset(0, -2),
                       ),
@@ -381,19 +602,13 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.primary,
                             padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                           ),
-                          onPressed: () => _exportPdf(shareAfter: false),
+                          onPressed: () => _showPdfExportSheet(shareDirectly: false),
                           icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
                           label: const Text(
                             'View / Export PDF',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                           ),
                         ),
                       ),
@@ -402,6 +617,29 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                 ),
               ],
             ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    Color color = AppTheme.primary,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 22),
+            const SizedBox(height: 4),
+            Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
     );
   }
 }

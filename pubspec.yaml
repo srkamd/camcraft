@@ -27,6 +27,7 @@ dependencies:
 
   # Image processing
   image: ^4.2.0
+  signature: ^5.5.0
 
   # Local storage & State
   shared_preferences: ^2.2.3
