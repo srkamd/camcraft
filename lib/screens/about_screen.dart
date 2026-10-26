@@ -15,7 +15,7 @@ class AboutScreen extends StatelessWidget {
 
   void _shareApp() {
     Share.share(
-      'Check out ScanCraft: Easy PDF & Doc Scanner! A complete, free, privacy-first CamScanner alternative with on-device AI, ID Card mode, and digital signatures: https://github.com/srkamd/scancraft',
+      'Check out ScanCraft: Easy PDF & Doc Scanner by Shahrukh Ahmad (srkamd)! A free, privacy-first CamScanner alternative with on-device AI, ID Card mode, and digital signatures: https://github.com/srkamd/scancraft',
       subject: 'ScanCraft - Mobile Document Scanner & PDF Utility',
     );
   }
@@ -84,11 +84,11 @@ class AboutScreen extends StatelessWidget {
 
             // 2. Vision & Mission Section
             _buildSectionCard(
-              title: '🎯 Our Vision',
+              title: '🎯 App Vision & Mission',
               icon: Icons.lightbulb_outline,
               child: const Text(
-                'ScanCraft was built to offer a free, modern, and privacy-first alternative to commercial document scanners. Traditional scanning apps often lock essential tools behind expensive subscriptions, bombard users with ads, and upload sensitive documents to external cloud servers.\n\n'
-                'ScanCraft processes all documents, boundary detection, OCR, and PDF generation 100% locally on your phone processor using Google ML Kit. Your confidential documents never leave your device.',
+                'ScanCraft was built to offer a completely free, modern, and privacy-first alternative to commercial document scanners. Traditional scanning apps frequently lock essential features behind expensive monthly subscriptions, bombard users with intrusive ads, and upload sensitive personal documents to external cloud servers.\n\n'
+                'ScanCraft is designed with a strict zero-cloud architecture: document boundary detection, perspective deskewing, OCR text extraction, and PDF generation run 100% locally on your smartphone processor using Google ML Kit. Your confidential documents never leave your device.',
                 style: TextStyle(fontSize: 13, height: 1.5, color: Color(0xFF334155)),
               ),
             ),
@@ -96,7 +96,7 @@ class AboutScreen extends StatelessWidget {
 
             // 3. Complete Feature Suite
             _buildSectionCard(
-              title: '⚡ Feature Suite',
+              title: '⚡ Complete Feature Suite',
               icon: Icons.auto_awesome_outlined,
               child: Column(
                 children: [
@@ -158,7 +158,7 @@ class AboutScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
-            // 4. Developer Information Card
+            // 4. Developer Information Card (Personalized for Shahrukh Ahmad)
             _buildSectionCard(
               title: '👨‍💻 Developer & Creator',
               icon: Icons.person_outline,
@@ -167,10 +167,19 @@ class AboutScreen extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      CircleAvatar(
-                        radius: 28,
-                        backgroundColor: AppTheme.primary.withOpacity(0.12),
-                        child: const Icon(Icons.person, size: 32, color: AppTheme.primary),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(30),
+                        child: Image.network(
+                          'https://avatars.githubusercontent.com/u/208114373?v=4',
+                          width: 58,
+                          height: 58,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => CircleAvatar(
+                            radius: 29,
+                            backgroundColor: AppTheme.primary.withOpacity(0.12),
+                            child: const Icon(Icons.person, size: 32, color: AppTheme.primary),
+                          ),
+                        ),
                       ),
                       const SizedBox(width: 14),
                       const Expanded(
@@ -178,12 +187,12 @@ class AboutScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'srkamd',
-                              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                              'Shahrukh Ahmad (SRK AMD)',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                             ),
                             SizedBox(height: 2),
                             Text(
-                              'Software Engineer & Mobile App Developer',
+                              'Computer Science • Computer Vision & Full-Stack Engineer',
                               style: TextStyle(fontSize: 12, color: Colors.grey),
                             ),
                           ],
@@ -191,42 +200,65 @@ class AboutScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                   const Text(
-                    'Built with passion for high-performance mobile utilities, clean software architecture, and modern computer vision on mobile platforms.',
+                    'Built with passion for real-world software engineering, computer vision, and privacy-first client applications.',
                     style: TextStyle(fontSize: 13, height: 1.4, color: Color(0xFF475569)),
                   ),
                   const SizedBox(height: 18),
 
-                  // Developer Links
-                  Row(
+                  // Contact & Social Links Grid
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: AppTheme.primary),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                          onPressed: () => _launchUrl('https://github.com/srkamd'),
-                          icon: const Icon(Icons.code, size: 18, color: AppTheme.primary),
-                          label: const Text('GitHub Profile', style: TextStyle(color: AppTheme.primary, fontSize: 13)),
-                        ),
+                      _buildSocialChip(
+                        label: 'LinkedIn',
+                        icon: Icons.business_center_outlined,
+                        color: const Color(0xFF0077B5),
+                        onTap: () => _launchUrl('https://linkedin.com/in/srkamd'),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primary,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                          onPressed: () => _launchUrl('https://github.com/srkamd/scancraft'),
-                          icon: const Icon(Icons.star_outline, size: 18, color: Colors.white),
-                          label: const Text('Star on GitHub', style: TextStyle(color: Colors.white, fontSize: 13)),
-                        ),
+                      _buildSocialChip(
+                        label: 'GitHub',
+                        icon: Icons.code,
+                        color: const Color(0xFF24292E),
+                        onTap: () => _launchUrl('https://github.com/srkamd'),
+                      ),
+                      _buildSocialChip(
+                        label: 'Email',
+                        icon: Icons.email_outlined,
+                        color: const Color(0xFFD14836),
+                        onTap: () => _launchUrl('mailto:srkamduk@gmail.com'),
+                      ),
+                      _buildSocialChip(
+                        label: 'Kaggle',
+                        icon: Icons.analytics_outlined,
+                        color: const Color(0xFF20BEFF),
+                        onTap: () => _launchUrl('https://kaggle.com/srkamd'),
+                      ),
+                      _buildSocialChip(
+                        label: 'X (Twitter)',
+                        icon: Icons.alternate_email,
+                        color: Colors.black87,
+                        onTap: () => _launchUrl('https://x.com/srkamd'),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Star Repo Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primary,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: () => _launchUrl('https://github.com/srkamd/scancraft'),
+                      icon: const Icon(Icons.star, size: 18, color: Colors.amber),
+                      label: const Text('Star ScanCraft on GitHub', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
                   ),
                 ],
               ),
@@ -254,6 +286,37 @@ class AboutScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSocialChip({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withOpacity(0.25)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold),
+            ),
           ],
         ),
       ),
