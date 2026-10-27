@@ -15,7 +15,7 @@ class AboutScreen extends StatelessWidget {
 
   void _shareApp() {
     Share.share(
-      'Check out CamCraft: Easy PDF & Doc Scanner by Shahrukh Ahmad (srkamd)! A free, privacy-first CamScanner alternative with on-device AI, ID Card mode, and digital signatures: https://github.com/srkamd/scancraft',
+      'Check out CamCraft: Easy PDF & Doc Scanner by Shahrukh Ahmad (srkamd)! A free, privacy-first CamScanner alternative with on-device AI, ID Card mode, and digital signatures: https://github.com/srkamd/camcraft',
       subject: 'CamCraft - Mobile Document Scanner & PDF Utility',
     );
   }
@@ -256,7 +256,7 @@ class AboutScreen extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      onPressed: () => _launchUrl('https://github.com/srkamd/scancraft'),
+                      onPressed: () => _launchUrl('https://github.com/srkamd/camcraft'),
                       icon: const Icon(Icons.star, size: 18, color: Colors.amber),
                       label: const Text('Star CamCraft on GitHub', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     ),

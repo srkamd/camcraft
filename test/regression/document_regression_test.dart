@@ -1,5 +1,5 @@
 import 'package:test/test.dart';
-import 'package:scancraft/models/scanned_document.dart';
+import 'package:camcraft/models/scanned_document.dart';
 
 void main() {
   group('Regression Test Suite - Document Pipeline & State Logic', () {

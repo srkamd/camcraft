@@ -68,5 +68,5 @@ We may update our Privacy Policy from time to time. Any changes will be posted o
 ## 8. Contact Us
 If you have any questions or feedback regarding this Privacy Policy, please contact:
 - **Developer:** Shahrukh Ahmad
-- **GitHub Repository:** [https://github.com/srkamd/scancraft](https://github.com/srkamd/scancraft)
+- **GitHub Repository:** [https://github.com/srkamd/camcraft](https://github.com/srkamd/camcraft)
 - **Contact Email:** `srkamd.dev@gmail.com`
