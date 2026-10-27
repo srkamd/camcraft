@@ -23,21 +23,11 @@ class PdfService {
     String? password,
     PdfQuality quality = PdfQuality.standard,
   }) async {
-    // Initialize PDF document with optional AES-128 Encryption
+    // Initialize PDF document
     final pdf = pw.Document(
       title: title,
       author: 'ScanCraft',
-      deflate: true,
-      encryption: (password != null && password.isNotEmpty)
-          ? pw.PdfDocumentEncryption(
-              userPassword: password,
-              ownerPassword: password,
-              permissions: const {
-                pw.PdfDocumentPermission.print,
-                pw.PdfDocumentPermission.copy,
-              },
-            )
-          : null,
+      deflate: zlib.encode,
     );
 
     for (int i = 0; i < imagePaths.length; i++) {

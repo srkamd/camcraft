@@ -342,7 +342,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: AppTheme.primary.withOpacity(0.1),
+                  color: AppTheme.primary.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.lock, size: 64, color: AppTheme.primary),
@@ -475,7 +475,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 setState(() => _selectedTag = tag);
                                 _applyFilter();
                               },
-                              selectedColor: AppTheme.primary.withOpacity(0.15),
+                              selectedColor: AppTheme.primary.withValues(alpha: 0.15),
                               checkmarkColor: AppTheme.primary,
                               labelStyle: TextStyle(
                                 color: isSelected ? AppTheme.primary : Colors.grey.shade700,
@@ -555,7 +555,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         color: isSelected ? AppTheme.primary : Colors.white70,
                                         shape: BoxShape.circle,
                                         boxShadow: [
-                                          BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4),
+                                          BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 4),
                                         ],
                                       ),
                                       child: Icon(
@@ -579,7 +579,7 @@ class _HomeScreenState extends State<HomeScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, -2)),
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 8, offset: const Offset(0, -2)),
                 ],
               ),
               child: Row(
@@ -627,7 +627,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               padding: const EdgeInsets.all(28),
               decoration: BoxDecoration(
-                color: AppTheme.primary.withOpacity(0.08),
+                color: AppTheme.primary.withValues(alpha: 0.08),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.document_scanner_outlined, size: 64, color: AppTheme.primary),

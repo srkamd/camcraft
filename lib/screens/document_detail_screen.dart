@@ -169,7 +169,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                     title: const Text('Password Protection', style: TextStyle(fontWeight: FontWeight.w600)),
                     subtitle: const Text('Lock PDF with AES encryption', style: TextStyle(fontSize: 12)),
                     value: enablePassword,
-                    activeColor: AppTheme.primary,
+                    activeThumbColor: AppTheme.primary,
                     onChanged: (val) => setSheetState(() => enablePassword = val),
                   ),
                   if (enablePassword)
@@ -258,7 +258,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
           decoration: BoxDecoration(
-            color: isSelected ? AppTheme.primary.withOpacity(0.12) : Colors.grey.shade100,
+            color: isSelected ? AppTheme.primary.withValues(alpha: 0.12) : Colors.grey.shade100,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: isSelected ? AppTheme.primary : Colors.transparent,
@@ -499,7 +499,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.06),
+                          color: Colors.black.withValues(alpha: 0.06),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -589,7 +589,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                     color: Colors.white,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
+                        color: Colors.black.withValues(alpha: 0.04),
                         blurRadius: 8,
                         offset: const Offset(0, -2),
                       ),
