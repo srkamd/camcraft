@@ -44,5 +44,14 @@ migrate_working_dir/
 .gradle/
 android/build/
 
+# Keystore & Signing Secrets (NEVER COMMIT TO PUBLIC REPO)
+*.jks
+*.keystore
+KEYSTORE/
+**/KEYSTORE/
+**/android/key.properties
+android/key.properties
+key.properties
+
 # Exceptions to above rules.
 !/packages/flutter_tools/test/data/dart_dependencies_test/**/.packages
