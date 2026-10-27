@@ -1,6 +1,6 @@
 @echo off
 echo ========================================================
-echo       ScanCraft: Building Google Play AAB Bundle
+echo       CamCraft: Building Google Play AAB Bundle
 echo ========================================================
 
 set "JAVA_HOME=C:\Users\srkamd\jdk-17\jdk-17.0.20.1+1"

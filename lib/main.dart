@@ -14,16 +14,16 @@ void main() async {
     ),
   );
 
-  runApp(const ScanCraftApp());
+  runApp(const CamCraftApp());
 }
 
-class ScanCraftApp extends StatelessWidget {
-  const ScanCraftApp({super.key});
+class CamCraftApp extends StatelessWidget {
+  const CamCraftApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ScanCraft',
+      title: 'CamCraft',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       home: const HomeScreen(),

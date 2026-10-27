@@ -15,8 +15,8 @@ class AboutScreen extends StatelessWidget {
 
   void _shareApp() {
     Share.share(
-      'Check out ScanCraft: Easy PDF & Doc Scanner by Shahrukh Ahmad (srkamd)! A free, privacy-first CamScanner alternative with on-device AI, ID Card mode, and digital signatures: https://github.com/srkamd/scancraft',
-      subject: 'ScanCraft - Mobile Document Scanner & PDF Utility',
+      'Check out CamCraft: Easy PDF & Doc Scanner by Shahrukh Ahmad (srkamd)! A free, privacy-first CamScanner alternative with on-device AI, ID Card mode, and digital signatures: https://github.com/srkamd/scancraft',
+      subject: 'CamCraft - Mobile Document Scanner & PDF Utility',
     );
   }
 
@@ -24,7 +24,7 @@ class AboutScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('About ScanCraft'),
+        title: const Text('About CamCraft'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -39,25 +39,26 @@ class AboutScreen extends StatelessWidget {
                     width: 88,
                     height: 88,
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [AppTheme.primary, AppTheme.accent],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(22),
                       boxShadow: [
                         BoxShadow(
-                          color: AppTheme.primary.withValues(alpha: 0.3),
-                          blurRadius: 16,
+                          color: AppTheme.primary.withValues(alpha: 0.25),
+                          blurRadius: 18,
                           offset: const Offset(0, 8),
                         ),
                       ],
                     ),
-                    child: const Icon(Icons.document_scanner, size: 48, color: Colors.white),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(22),
+                      child: Image.asset(
+                        'assets/icons/camcraft_logo_512.png',
+                        fit: BoxFit.cover,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 14),
                   const Text(
-                    'ScanCraft',
+                    'CamCraft',
                     style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: -0.5),
                   ),
                   const SizedBox(height: 4),
@@ -87,8 +88,8 @@ class AboutScreen extends StatelessWidget {
               title: '🎯 App Vision & Mission',
               icon: Icons.lightbulb_outline,
               child: const Text(
-                'ScanCraft was built to offer a completely free, modern, and privacy-first alternative to commercial document scanners. Traditional scanning apps frequently lock essential features behind expensive monthly subscriptions, bombard users with intrusive ads, and upload sensitive personal documents to external cloud servers.\n\n'
-                'ScanCraft is designed with a strict zero-cloud architecture: document boundary detection, perspective deskewing, OCR text extraction, and PDF generation run 100% locally on your smartphone processor using Google ML Kit. Your confidential documents never leave your device.',
+                'CamCraft was built to offer a completely free, modern, and privacy-first alternative to commercial document scanners. Traditional scanning apps frequently lock essential features behind expensive monthly subscriptions, bombard users with intrusive ads, and upload sensitive personal documents to external cloud servers.\n\n'
+                'CamCraft is designed with a strict zero-cloud architecture: document boundary detection, perspective deskewing, OCR text extraction, and PDF generation run 100% locally on your smartphone processor using Google ML Kit. Your confidential documents never leave your device.',
                 style: TextStyle(fontSize: 13, height: 1.5, color: Color(0xFF334155)),
               ),
             ),
@@ -257,7 +258,7 @@ class AboutScreen extends StatelessWidget {
                       ),
                       onPressed: () => _launchUrl('https://github.com/srkamd/scancraft'),
                       icon: const Icon(Icons.star, size: 18, color: Colors.amber),
-                      label: const Text('Star ScanCraft on GitHub', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      label: const Text('Star CamCraft on GitHub', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],
@@ -274,14 +275,14 @@ class AboutScreen extends StatelessWidget {
               ),
               onPressed: _shareApp,
               icon: const Icon(Icons.share, size: 20, color: Color(0xFF1E293B)),
-              label: const Text('Share ScanCraft with Friends', style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.w600)),
+              label: const Text('Share CamCraft with Friends', style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.w600)),
             ),
             const SizedBox(height: 24),
 
             // Footer
             Center(
               child: Text(
-                '© 2026 ScanCraft • Open Source MIT License',
+                '© 2026 CamCraft • Open Source MIT License',
                 style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
               ),
             ),

@@ -26,7 +26,7 @@ class PdfService {
     // Initialize PDF document
     final pdf = pw.Document(
       title: title,
-      author: 'ScanCraft',
+      author: 'CamCraft',
       deflate: zlib.encode,
     );
 
@@ -83,7 +83,7 @@ class PdfService {
     }
 
     final appDir = await getApplicationDocumentsDirectory();
-    final pdfDir = Directory(p.join(appDir.path, 'scancraft_pdfs'));
+    final pdfDir = Directory(p.join(appDir.path, 'camcraft_pdfs'));
     if (!await pdfDir.exists()) {
       await pdfDir.create(recursive: true);
     }
@@ -131,7 +131,7 @@ class PdfService {
   /// Share the PDF file to WhatsApp, Drive, Gmail, etc.
   Future<void> sharePdf(String pdfPath, {String? text}) async {
     final file = XFile(pdfPath);
-    await Share.shareXFiles([file], text: text ?? 'Scanned with ScanCraft');
+    await Share.shareXFiles([file], text: text ?? 'Scanned with CamCraft');
   }
 
   /// Open and view the PDF in the device default viewer

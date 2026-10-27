@@ -348,7 +348,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: const Icon(Icons.lock, size: 64, color: AppTheme.primary),
               ),
               const SizedBox(height: 20),
-              const Text('ScanCraft is Locked', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const Text('CamCraft is Locked', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               const Text('Use fingerprint or face recognition to unlock', style: TextStyle(color: Colors.grey)),
               const SizedBox(height: 24),
@@ -374,20 +374,21 @@ class _HomeScreenState extends State<HomeScreen> {
             ? Text('${_selectedDocIds.length} Selected', style: const TextStyle(fontWeight: FontWeight.bold))
             : Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary,
-                      borderRadius: BorderRadius.circular(10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(9),
+                    child: Image.asset(
+                      'assets/icons/camcraft_logo_512.png',
+                      width: 32,
+                      height: 32,
+                      fit: BoxFit.cover,
                     ),
-                    child: const Icon(Icons.document_scanner, color: Colors.white, size: 22),
                   ),
                   const SizedBox(width: 10),
                   const Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('ScanCraft', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
-                      Text('Easy PDF & Doc Scanner', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                      Text('CamCraft', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+                      Text('Smart ML PDF & Doc Scanner', style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.w500)),
                     ],
                   ),
                 ],
@@ -421,7 +422,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.info_outline),
-                  tooltip: 'About App & Developer',
+                  tooltip: 'About CamCraft',
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const AboutScreen()),
@@ -434,7 +435,7 @@ class _HomeScreenState extends State<HomeScreen> {
           // Search Bar
           if (!_isSelectionMode)
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
               child: TextField(
                 controller: _searchController,
                 decoration: InputDecoration(
@@ -451,15 +452,65 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
+          // Quick Action Dashboard Bar (Scan, ID Card, Gallery, QR)
+          if (!_isSelectionMode)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.primary.withValues(alpha: 0.08),
+                      AppTheme.accent.withValues(alpha: 0.05),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppTheme.primary.withValues(alpha: 0.12)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildQuickActionBtn(
+                      icon: Icons.camera_alt,
+                      label: 'Scan Doc',
+                      onTap: _startDocumentScan,
+                      color: AppTheme.primary,
+                    ),
+                    _buildQuickActionBtn(
+                      icon: Icons.badge_outlined,
+                      label: 'ID Card',
+                      onTap: _openIdCardMode,
+                      color: const Color(0xFF0284C7),
+                    ),
+                    _buildQuickActionBtn(
+                      icon: Icons.photo_library_outlined,
+                      label: 'Import',
+                      onTap: _importFromGallery,
+                      color: const Color(0xFFD97706),
+                    ),
+                    _buildQuickActionBtn(
+                      icon: Icons.qr_code_scanner,
+                      label: 'QR / Barcode',
+                      onTap: _openQrScanner,
+                      color: const Color(0xFF7C3AED),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
           // Tag Filter Chips & Multi-select trigger
           if (!_isSelectionMode)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
               child: Row(
                 children: [
                   Expanded(
                     child: SizedBox(
-                      height: 40,
+                      height: 38,
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal,
                         itemCount: _tags.length,
@@ -653,6 +704,43 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: _importFromGallery,
               icon: const Icon(Icons.photo_library, color: AppTheme.primary),
               label: const Text('Import from Photos', style: TextStyle(color: AppTheme.primary)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickActionBtn({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required Color color,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 20, color: color),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade800,
+              ),
             ),
           ],
         ),

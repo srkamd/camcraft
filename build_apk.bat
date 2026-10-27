@@ -1,6 +1,6 @@
 @echo off
 echo ========================================================
-echo       ScanCraft: Building Release APK with JDK 17
+echo       CamCraft: Building Release APK with JDK 17
 echo ========================================================
 
 set "JAVA_HOME=C:\Users\srkamd\jdk-17\jdk-17.0.20.1+1"

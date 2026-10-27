@@ -1,4 +1,4 @@
-package com.scancraft.app
+package com.srkamd.camcraft
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 
