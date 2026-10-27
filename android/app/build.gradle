@@ -50,7 +50,7 @@ android {
     defaultConfig {
         applicationId "com.srkamd.camcraft"
         minSdkVersion flutter.minSdkVersion
-        targetSdkVersion 34
+        targetSdkVersion 36
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
     }
