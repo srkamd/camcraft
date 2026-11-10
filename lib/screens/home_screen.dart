@@ -140,6 +140,43 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Batch Scan Mode:
+  /// Allows users to continuously scan dozens of document pages, books, contracts, receipts,
+  /// with automatic edge detection, automatic cropping, filters, and saves them into one unified file.
+  Future<void> _startBatchScan() async {
+    final pagePaths = await _scannerService.startBatchScan(pageLimit: 100);
+    if (pagePaths.isNotEmpty) {
+      final now = DateTime.now();
+      final newDoc = ScannedDocument(
+        id: now.millisecondsSinceEpoch.toString(),
+        title: 'Batch Scan (${pagePaths.length} pages) ${now.day}-${now.month}',
+        pagePaths: pagePaths,
+        createdAt: now,
+        updatedAt: now,
+        tag: 'Docs',
+      );
+
+      await _storageService.saveDocument(newDoc);
+      await _loadDocuments();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('⚡ Batch Scan Complete! Captured ${pagePaths.length} pages.'),
+          backgroundColor: AppTheme.primary,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DocumentDetailScreen(document: newDoc),
+        ),
+      ).then((_) => _loadDocuments());
+    }
+  }
+
   Future<void> _importFromGallery() async {
     final pagePaths = await _scannerService.pickFromGallery();
     if (pagePaths.isNotEmpty) {
@@ -475,9 +512,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     _buildQuickActionBtn(
                       icon: Icons.camera_alt,
-                      label: 'Scan Doc',
+                      label: 'Single Scan',
                       onTap: _startDocumentScan,
                       color: AppTheme.primary,
+                    ),
+                    _buildQuickActionBtn(
+                      icon: Icons.filter_none,
+                      label: 'Batch Scan',
+                      onTap: _startBatchScan,
+                      color: const Color(0xFF10B981),
                     ),
                     _buildQuickActionBtn(
                       icon: Icons.badge_outlined,
@@ -493,7 +536,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     _buildQuickActionBtn(
                       icon: Icons.qr_code_scanner,
-                      label: 'QR / Barcode',
+                      label: 'QR Scanner',
                       onTap: _openQrScanner,
                       color: const Color(0xFF7C3AED),
                     ),
@@ -657,13 +700,31 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       floatingActionButton: _isSelectionMode
           ? null
-          : FloatingActionButton.extended(
-              onPressed: _startDocumentScan,
-              icon: const Icon(Icons.camera_alt),
-              label: const Text(
-                'Scan Document',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-              ),
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                FloatingActionButton.extended(
+                  heroTag: 'fab_batch_scan',
+                  onPressed: _startBatchScan,
+                  backgroundColor: const Color(0xFF10B981),
+                  icon: const Icon(Icons.filter_none, color: Colors.white),
+                  label: const Text(
+                    'Batch Scan',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                FloatingActionButton.extended(
+                  heroTag: 'fab_single_scan',
+                  onPressed: _startDocumentScan,
+                  backgroundColor: AppTheme.primary,
+                  icon: const Icon(Icons.camera_alt, color: Colors.white),
+                  label: const Text(
+                    'Scan',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white),
+                  ),
+                ),
+              ],
             ),
     );
   }

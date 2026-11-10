@@ -8,12 +8,18 @@ class ScannerService {
   final ImagePicker _picker = ImagePicker();
 
   /// Launch Google ML Kit Document Scanner
-  Future<List<String>> startDocumentScan({int pageLimit = 20}) async {
+  /// [pageLimit]: Maximum pages allowed in one session (default 20 for single doc, 100 for batch scan)
+  /// [isGalleryImport]: Whether to allow importing from gallery within the ML scanner UI
+  Future<List<String>> startDocumentScan({
+    int pageLimit = 20,
+    bool isGalleryImport = false,
+  }) async {
     try {
       final options = DocumentScannerOptions(
         documentFormat: DocumentFormat.jpeg,
-        mode: ScannerMode.full,            // Full editing UI (crop, filters, rotation)
+        mode: ScannerMode.full,            // Full editing UI (auto-detect edges, crop, filters, rotation)
         pageLimit: pageLimit,
+        isGalleryImport: isGalleryImport,
       );
 
       final documentScanner = DocumentScanner(options: options);
@@ -26,6 +32,16 @@ class ScannerService {
       print('ScannerService scan error: $e');
     }
     return [];
+  }
+
+  /// Batch Scan Mode:
+  /// Optimized for scanning multi-page files, books, contracts, receipts in rapid succession
+  /// Sets higher pageLimit (up to 100 pages) and enables in-scanner gallery import support.
+  Future<List<String>> startBatchScan({int pageLimit = 100}) async {
+    return await startDocumentScan(
+      pageLimit: pageLimit,
+      isGalleryImport: true,
+    );
   }
 
   /// Pick images from device gallery as pages

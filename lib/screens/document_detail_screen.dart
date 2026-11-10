@@ -437,13 +437,80 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
   }
 
   Future<void> _addMorePages() async {
-    final newPaths = await _scannerService.startDocumentScan();
+    final option = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Add Pages to Document', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), shape: BoxShape.circle),
+                  child: const Icon(Icons.filter_none, color: Color(0xFF10B981)),
+                ),
+                title: const Text('Batch Scan (Multiple Pages)'),
+                subtitle: const Text('Scan continuous pages with auto-cropping'),
+                onTap: () => Navigator.pop(context, 'batch'),
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
+                  child: const Icon(Icons.camera_alt, color: AppTheme.primary),
+                ),
+                title: const Text('Single Scan'),
+                subtitle: const Text('Scan 1 or few pages'),
+                onTap: () => Navigator.pop(context, 'single'),
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: const Color(0xFFD97706).withValues(alpha: 0.1), shape: BoxShape.circle),
+                  child: const Icon(Icons.photo_library, color: Color(0xFFD97706)),
+                ),
+                title: const Text('Import from Photos'),
+                subtitle: const Text('Select images from your gallery'),
+                onTap: () => Navigator.pop(context, 'gallery'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (option == null) return;
+
+    List<String> newPaths = [];
+    if (option == 'batch') {
+      newPaths = await _scannerService.startBatchScan(pageLimit: 100);
+    } else if (option == 'single') {
+      newPaths = await _scannerService.startDocumentScan(pageLimit: 20);
+    } else if (option == 'gallery') {
+      newPaths = await _scannerService.pickFromGallery();
+    }
+
     if (newPaths.isNotEmpty) {
       setState(() {
         _doc.pagePaths.addAll(newPaths);
         _doc.updatedAt = DateTime.now();
       });
       await _storageService.updateDocument(_doc);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Added ${newPaths.length} new pages to document.'),
+          backgroundColor: AppTheme.primary,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
