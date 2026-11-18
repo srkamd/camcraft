@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/scanned_document.dart';
 import '../services/filter_service.dart';
 import '../services/pdf_service.dart';
@@ -36,6 +38,10 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isSelectionMode = false;
   final Set<String> _selectedDocIds = {};
 
+  // View Mode & Speed-Dial FAB
+  bool _isGridView = false;
+  bool _isFabExpanded = false;
+
   String _selectedTag = 'All';
   final TextEditingController _searchController = TextEditingController();
   final List<String> _tags = ['All', 'Docs', 'ID Cards', 'Notes', 'Receipts'];
@@ -43,9 +49,28 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _loadViewPreference();
     _checkAppLock();
     _loadDocuments();
     _searchController.addListener(_applyFilter);
+  }
+
+  Future<void> _loadViewPreference() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _isGridView = prefs.getBool('is_grid_view') ?? false;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _toggleViewMode() async {
+    final next = !_isGridView;
+    setState(() => _isGridView = next);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('is_grid_view', next);
+    } catch (_) {}
   }
 
   @override
@@ -597,6 +622,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       tooltip: 'Select & Merge',
                       onPressed: () => setState(() => _isSelectionMode = true),
                     ),
+                  IconButton(
+                    icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view, size: 22, color: Colors.grey.shade700),
+                    tooltip: _isGridView ? 'Switch to List View' : 'Switch to Grid View',
+                    onPressed: _toggleViewMode,
+                  ),
                 ],
               ),
             ),
@@ -610,68 +640,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     : RefreshIndicator(
                         onRefresh: _loadDocuments,
                         color: AppTheme.primary,
-                        child: GridView.builder(
-                          padding: const EdgeInsets.all(16),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            childAspectRatio: 0.72,
-                            crossAxisSpacing: 14,
-                            mainAxisSpacing: 14,
-                          ),
-                          itemCount: _filteredDocuments.length,
-                          itemBuilder: (context, index) {
-                            final doc = _filteredDocuments[index];
-                            final isSelected = _selectedDocIds.contains(doc.id);
-
-                            return Stack(
-                              children: [
-                                DocumentCard(
-                                  document: doc,
-                                  onTap: () {
-                                    if (_isSelectionMode) {
-                                      setState(() {
-                                        if (isSelected) {
-                                          _selectedDocIds.remove(doc.id);
-                                        } else {
-                                          _selectedDocIds.add(doc.id);
-                                        }
-                                      });
-                                    } else {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => DocumentDetailScreen(document: doc),
-                                        ),
-                                      ).then((_) => _loadDocuments());
-                                    }
-                                  },
-                                  onRename: () => _renameDocument(doc),
-                                  onExportPdf: () => _exportPdf(doc),
-                                  onDelete: () => _deleteDocument(doc),
-                                ),
-                                if (_isSelectionMode)
-                                  Positioned(
-                                    top: 8,
-                                    right: 8,
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: isSelected ? AppTheme.primary : Colors.white70,
-                                        shape: BoxShape.circle,
-                                        boxShadow: [
-                                          BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 4),
-                                        ],
-                                      ),
-                                      child: Icon(
-                                        isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
-                                        color: isSelected ? Colors.white : Colors.grey.shade700,
-                                        size: 26,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            );
-                          },
-                        ),
+                        child: _isGridView ? _buildGridView() : _buildListView(),
                       ),
           ),
 
@@ -709,32 +678,354 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       floatingActionButton: _isSelectionMode
           ? null
-          : Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                FloatingActionButton.extended(
-                  heroTag: 'fab_batch_scan',
-                  onPressed: _startBatchScan,
-                  backgroundColor: const Color(0xFF10B981),
-                  icon: const Icon(Icons.filter_none, color: Colors.white),
-                  label: const Text(
-                    'Batch Scan',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white),
+                if (_isFabExpanded) ...[
+                  _buildFabActionItem(
+                    label: 'Batch Scan',
+                    icon: Icons.filter_none,
+                    color: const Color(0xFF10B981),
+                    onTap: () {
+                      setState(() => _isFabExpanded = false);
+                      _startBatchScan();
+                    },
                   ),
-                ),
-                const SizedBox(width: 12),
-                FloatingActionButton.extended(
-                  heroTag: 'fab_single_scan',
-                  onPressed: _startDocumentScan,
-                  backgroundColor: AppTheme.primary,
-                  icon: const Icon(Icons.camera_alt, color: Colors.white),
-                  label: const Text(
-                    'Scan',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white),
+                  const SizedBox(height: 12),
+                  _buildFabActionItem(
+                    label: 'ID Card Mode',
+                    icon: Icons.badge_outlined,
+                    color: const Color(0xFF6366F1),
+                    onTap: () {
+                      setState(() => _isFabExpanded = false);
+                      _openIdCardMode();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _buildFabActionItem(
+                    label: 'Import Photos',
+                    icon: Icons.photo_library,
+                    color: const Color(0xFFF59E0B),
+                    onTap: () {
+                      setState(() => _isFabExpanded = false);
+                      _importFromGallery();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _buildFabActionItem(
+                    label: 'Single Scan',
+                    icon: Icons.camera_alt,
+                    color: AppTheme.primary,
+                    onTap: () {
+                      setState(() => _isFabExpanded = false);
+                      _startDocumentScan();
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                FloatingActionButton(
+                  heroTag: 'main_fab',
+                  backgroundColor: _isFabExpanded ? Colors.grey.shade800 : AppTheme.primary,
+                  elevation: 6,
+                  onPressed: () => setState(() => _isFabExpanded = !_isFabExpanded),
+                  child: AnimatedRotation(
+                    turns: _isFabExpanded ? 0.375 : 0,
+                    duration: const Duration(milliseconds: 250),
+                    child: Icon(
+                      _isFabExpanded ? Icons.close : Icons.camera_alt,
+                      color: Colors.white,
+                      size: 26,
+                    ),
                   ),
                 ),
               ],
             ),
+    );
+  }
+
+  Widget _buildFabActionItem({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.4),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Icon(icon, color: Colors.white, size: 22),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGridView() {
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 0.72,
+        crossAxisSpacing: 14,
+        mainAxisSpacing: 14,
+      ),
+      itemCount: _filteredDocuments.length,
+      itemBuilder: (context, index) {
+        final doc = _filteredDocuments[index];
+        final isSelected = _selectedDocIds.contains(doc.id);
+
+        return Stack(
+          children: [
+            DocumentCard(
+              document: doc,
+              onTap: () {
+                if (_isSelectionMode) {
+                  setState(() {
+                    if (isSelected) {
+                      _selectedDocIds.remove(doc.id);
+                    } else {
+                      _selectedDocIds.add(doc.id);
+                    }
+                  });
+                } else {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => DocumentDetailScreen(document: doc),
+                    ),
+                  ).then((_) => _loadDocuments());
+                }
+              },
+              onRename: () => _renameDocument(doc),
+              onExportPdf: () => _exportPdf(doc),
+              onDelete: () => _deleteDocument(doc),
+            ),
+            if (_isSelectionMode)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isSelected ? AppTheme.primary : Colors.white70,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 4),
+                    ],
+                  ),
+                  child: Icon(
+                    isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
+                    color: isSelected ? Colors.white : Colors.grey.shade700,
+                    size: 26,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildListView() {
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      itemCount: _filteredDocuments.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (context, index) {
+        final doc = _filteredDocuments[index];
+        final isSelected = _selectedDocIds.contains(doc.id);
+
+        return InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            if (_isSelectionMode) {
+              setState(() {
+                if (isSelected) {
+                  _selectedDocIds.remove(doc.id);
+                } else {
+                  _selectedDocIds.add(doc.id);
+                }
+              });
+            } else {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => DocumentDetailScreen(document: doc),
+                ),
+              ).then((_) => _loadDocuments());
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isSelected ? AppTheme.primary : Colors.grey.shade200,
+                width: isSelected ? 2 : 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                // Thumbnail with page count badge
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: 58,
+                        height: 72,
+                        color: Colors.grey.shade100,
+                        child: doc.thumbnailPath != null && File(doc.thumbnailPath!).existsSync()
+                            ? Image.file(
+                                File(doc.thumbnailPath!),
+                                fit: BoxFit.cover,
+                              )
+                            : const Center(
+                                child: Icon(Icons.picture_as_pdf, color: Colors.grey, size: 28),
+                              ),
+                      ),
+                      Positioned(
+                        bottom: 4,
+                        right: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '${doc.pageCount}p',
+                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 14),
+
+                // Info (Title, Tag, Date)
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        doc.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              doc.tag,
+                              style: const TextStyle(
+                                color: AppTheme.primary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${doc.createdAt.day}/${doc.createdAt.month}/${doc.createdAt.year}',
+                            style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Actions or Selection check
+                if (_isSelectionMode)
+                  Icon(
+                    isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
+                    color: isSelected ? AppTheme.primary : Colors.grey.shade400,
+                  )
+                else
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.share_outlined, size: 20, color: Colors.grey),
+                        tooltip: 'Share PDF',
+                        onPressed: () => _exportPdf(doc),
+                      ),
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert, size: 20, color: Colors.grey),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        onSelected: (val) {
+                          if (val == 'rename') _renameDocument(doc);
+                          if (val == 'delete') _deleteDocument(doc);
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'rename',
+                            child: Row(children: [Icon(Icons.edit, size: 18), SizedBox(width: 10), Text('Rename')]),
+                          ),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Row(children: [Icon(Icons.delete_outline, size: 18, color: Colors.red), SizedBox(width: 10), Text('Delete', style: TextStyle(color: Colors.red))]),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

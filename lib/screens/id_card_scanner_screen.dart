@@ -4,6 +4,7 @@ import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import '../models/scanned_document.dart';
+import '../services/filter_service.dart';
 import '../services/scanner_service.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
@@ -91,11 +92,17 @@ class _IdCardScannerScreenState extends State<IdCardScannerScreen> {
         final jpgBytes = img.encodeJpg(canvas, quality: 90);
         await File(outputPath).writeAsBytes(jpgBytes);
 
+        // Auto-enhance stitched ID card page with Magic Color
+        final enhancedPath = await FilterService.applyFilter(
+          imagePath: outputPath,
+          filterType: DocumentFilterType.magicColor,
+        );
+
         // Create ScannedDocument
         final doc = ScannedDocument(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
           title: 'ID Card Scan ${DateTime.now().day}/${DateTime.now().month}',
-          pagePaths: [outputPath],
+          pagePaths: [enhancedPath],
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
           tag: 'ID Cards',

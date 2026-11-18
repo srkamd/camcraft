@@ -62,6 +62,39 @@ class _OcrResultScreenState extends State<OcrResultScreen> {
     }
   }
 
+  Future<void> _exportAsWordDoc() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final sanitizedTitle = widget.documentTitle.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+      final file = File('${dir.path}/${sanitizedTitle}.doc');
+
+      final formattedHtml = '''
+<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+<meta charset='utf-8'>
+<title>${widget.documentTitle}</title>
+<style>
+body { font-family: 'Calibri', 'Segoe UI', Arial, sans-serif; font-size: 12pt; line-height: 1.6; color: #111827; margin: 40px; }
+h1 { font-size: 18pt; color: #10B981; border-bottom: 2px solid #E5E7EB; padding-bottom: 8px; }
+p { margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<h1>${widget.documentTitle}</h1>
+<p>${_textController.text.replaceAll('\n', '<br/>')}</p>
+</body>
+</html>
+''';
+
+      await file.writeAsString(formattedHtml);
+      await Share.shareXFiles([XFile(file.path)], text: 'Exported Word Document (.doc)');
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Word export error: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -116,26 +149,40 @@ class _OcrResultScreenState extends State<OcrResultScreen> {
                 Expanded(
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
                       side: const BorderSide(color: AppTheme.primary),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     onPressed: _copyToClipboard,
-                    icon: const Icon(Icons.copy, color: AppTheme.primary),
-                    label: const Text('Copy Text', style: TextStyle(color: AppTheme.primary)),
+                    icon: const Icon(Icons.copy, size: 18, color: AppTheme.primary),
+                    label: const Text('Copy', style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold)),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      backgroundColor: AppTheme.primary,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      side: BorderSide(color: Colors.grey.shade400),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     onPressed: _exportAsTxt,
-                    icon: const Icon(Icons.save_alt, color: Colors.white),
-                    label: const Text('Export .TXT', style: TextStyle(color: Colors.white)),
+                    icon: const Icon(Icons.description_outlined, size: 18, color: Colors.black87),
+                    label: const Text('.TXT', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 1,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      backgroundColor: const Color(0xFF2563EB), // Microsoft Blue
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: _exportAsWordDoc,
+                    icon: const Icon(Icons.article, size: 18, color: Colors.white),
+                    label: const Text('Word (.doc)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                 ),
               ],

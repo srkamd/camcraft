@@ -2,6 +2,8 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/scanned_document.dart';
 import '../services/filter_service.dart';
 import '../services/ocr_service.dart';
@@ -163,6 +165,27 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                       prefixIcon: Icon(Icons.branding_watermark, size: 20),
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      'CONFIDENTIAL',
+                      'FOR VISA ONLY',
+                      'VERIFIED ORIGINAL',
+                      'DO NOT COPY',
+                    ].map((preset) => ActionChip(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      label: Text(preset, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                      backgroundColor: Colors.grey.shade100,
+                      onPressed: () {
+                        setSheetState(() {
+                          watermarkController.text = preset;
+                        });
+                      },
+                    )).toList(),
+                  ),
                   const SizedBox(height: 12),
 
                   // Password Protection Option
@@ -235,6 +258,9 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         } else {
           await _pdfService.openPdf(pdfPath);
         }
+
+        // Check if user is eligible for a friendly 5-star rating prompt
+        _checkAndPromptRating();
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('PDF Error: $e')));
@@ -243,6 +269,64 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         if (mounted) setState(() => _isGeneratingPdf = false);
       }
     }
+  }
+
+  Future<void> _checkAndPromptRating() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final hasRated = prefs.getBool('has_prompted_rating') ?? false;
+      if (hasRated) return;
+
+      final count = (prefs.getInt('pdf_export_count') ?? 0) + 1;
+      await prefs.setInt('pdf_export_count', count);
+
+      if (count >= 2) {
+        await prefs.setBool('has_prompted_rating', true);
+        if (!mounted) return;
+        _showRatingDialog();
+      }
+    } catch (_) {}
+  }
+
+  void _showRatingDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.star, color: Colors.amber, size: 28),
+            SizedBox(width: 8),
+            Text('Loving CamCraft?', style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: const Text(
+          'If CamCraft is making your document scanning fast and easy, would you take a moment to rate us 5 stars on Google Play? Your review helps us continue improving!',
+          style: TextStyle(fontSize: 14, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Maybe Later', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              Navigator.pop(context);
+              const playStoreUrl = 'https://play.google.com/store/apps/details?id=com.srkamd.camcraft';
+              final uri = Uri.parse(playStoreUrl);
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+            child: const Text('Rate 5 Stars ⭐', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildQualityChip({
