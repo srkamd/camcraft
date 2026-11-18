@@ -1,18 +1,34 @@
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import '../models/scanned_document.dart';
 import '../services/filter_service.dart';
+import '../services/ocr_service.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import 'document_detail_screen.dart';
+import 'ocr_result_screen.dart';
+
+enum CameraScanMode {
+  idCard,
+  single,
+  batch,
+  ocr,
+}
 
 class BatchCameraScreen extends StatefulWidget {
+  final CameraScanMode initialMode;
   final ScannedDocument? targetDocument;
-  const BatchCameraScreen({super.key, this.targetDocument});
+
+  const BatchCameraScreen({
+    super.key,
+    this.initialMode = CameraScanMode.batch,
+    this.targetDocument,
+  });
 
   @override
   State<BatchCameraScreen> createState() => _BatchCameraScreenState();
@@ -24,18 +40,29 @@ class _BatchCameraScreenState extends State<BatchCameraScreen> with WidgetsBindi
   int _selectedCameraIndex = 0;
   bool _isInitialized = false;
   bool _isCapturing = false;
+
+  late CameraScanMode _currentMode;
   FlashMode _flashMode = FlashMode.off;
   bool _autoMagicColor = true;
+  bool _showGrid = false;
+  bool _showShutterFlash = false;
 
+  // Batch Mode Pages
   final List<String> _capturedPages = [];
+
+  // ID Card Mode State
+  String? _idCardFrontPath;
+  String? _idCardBackPath;
+  bool _isIdCardFront = true;
+
   final StorageService _storageService = StorageService();
   final ImagePicker _picker = ImagePicker();
-
-  bool _showShutterFlash = false;
+  final OcrService _ocrService = OcrService();
 
   @override
   void initState() {
     super.initState();
+    _currentMode = widget.initialMode;
     WidgetsBinding.instance.addObserver(this);
     _initCameras();
   }
@@ -70,7 +97,6 @@ class _BatchCameraScreenState extends State<BatchCameraScreen> with WidgetsBindi
         return;
       }
 
-      // Default to back camera
       final backIndex = _cameras.indexWhere((c) => c.lensDirection == CameraLensDirection.back);
       _selectedCameraIndex = backIndex != -1 ? backIndex : 0;
       await _initCameraController(_cameras[_selectedCameraIndex]);
@@ -96,7 +122,7 @@ class _BatchCameraScreenState extends State<BatchCameraScreen> with WidgetsBindi
       await newController.initialize();
       if (!mounted) return;
 
-      // Restore torch if it was active
+      // Maintain persistent torch if user activated it
       if (_flashMode == FlashMode.torch) {
         await newController.setFlashMode(FlashMode.torch);
       } else {
@@ -131,7 +157,21 @@ class _BatchCameraScreenState extends State<BatchCameraScreen> with WidgetsBindi
     await _initCameraController(_cameras[_selectedCameraIndex]);
   }
 
-  Future<void> _takePicture() async {
+  Future<String> _saveCapturedFile(XFile photo, String prefix) async {
+    final appDir = await getApplicationDocumentsDirectory();
+    final scansDir = Directory(p.join(appDir.path, 'scancraft_images'));
+    if (!await scansDir.exists()) {
+      await scansDir.create(recursive: true);
+    }
+
+    final fileName = '${prefix}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final destination = p.join(scansDir.path, fileName);
+    final savedFile = await File(photo.path).copy(destination);
+    return savedFile.path;
+  }
+
+  /// Main Shutter Tap Handler
+  Future<void> _onShutterTap() async {
     if (_controller == null || !_controller!.value.isInitialized || _isCapturing) return;
 
     setState(() {
@@ -139,7 +179,6 @@ class _BatchCameraScreenState extends State<BatchCameraScreen> with WidgetsBindi
       _showShutterFlash = true;
     });
 
-    // Quick white shutter animation
     Future.delayed(const Duration(milliseconds: 90), () {
       if (mounted) setState(() => _showShutterFlash = false);
     });
@@ -147,21 +186,22 @@ class _BatchCameraScreenState extends State<BatchCameraScreen> with WidgetsBindi
     try {
       final XFile photo = await _controller!.takePicture();
 
-      // Persist image to app documents directory
-      final appDir = await getApplicationDocumentsDirectory();
-      final scansDir = Directory(p.join(appDir.path, 'scancraft_images'));
-      if (!await scansDir.exists()) {
-        await scansDir.create(recursive: true);
+      switch (_currentMode) {
+        case CameraScanMode.batch:
+          await _handleBatchCapture(photo);
+          break;
+        case CameraScanMode.single:
+          await _handleSingleCapture(photo);
+          break;
+        case CameraScanMode.idCard:
+          await _handleIdCardCapture(photo);
+          break;
+        case CameraScanMode.ocr:
+          await _handleOcrCapture(photo);
+          break;
       }
-
-      final fileName = 'batch_page_${DateTime.now().millisecondsSinceEpoch}_${_capturedPages.length + 1}.jpg';
-      final savedFile = await File(photo.path).copy(p.join(scansDir.path, fileName));
-
-      setState(() {
-        _capturedPages.add(savedFile.path);
-      });
     } catch (e) {
-      print('Error taking picture: $e');
+      print('Capture error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to capture: $e')),
@@ -174,26 +214,247 @@ class _BatchCameraScreenState extends State<BatchCameraScreen> with WidgetsBindi
     }
   }
 
+  /// Batch Scan Mode Logic: Stays in camera, appends to corner thumbnail stack
+  Future<void> _handleBatchCapture(XFile photo) async {
+    final savedPath = await _saveCapturedFile(photo, 'batch_page_${_capturedPages.length + 1}');
+    setState(() {
+      _capturedPages.add(savedPath);
+    });
+  }
+
+  /// Single Scan Mode Logic: Captures 1 page and immediately opens document
+  Future<void> _handleSingleCapture(XFile photo) async {
+    final savedPath = await _saveCapturedFile(photo, 'single_scan');
+    String finalPath = savedPath;
+
+    if (_autoMagicColor) {
+      final enhanced = await FilterService.applyFilter(
+        imagePath: savedPath,
+        filterType: DocumentFilterType.magicColor,
+      );
+      finalPath = enhanced;
+    }
+
+    if (widget.targetDocument != null) {
+      widget.targetDocument!.pagePaths.add(finalPath);
+      widget.targetDocument!.updatedAt = DateTime.now();
+      await _storageService.updateDocument(widget.targetDocument!);
+      if (!mounted) return;
+      Navigator.pop(context, [finalPath]);
+      return;
+    }
+
+    final now = DateTime.now();
+    final doc = ScannedDocument(
+      id: now.millisecondsSinceEpoch.toString(),
+      title: 'Scan ${now.day}-${now.month} ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
+      pagePaths: [finalPath],
+      createdAt: now,
+      updatedAt: now,
+      tag: 'Docs',
+    );
+
+    await _storageService.saveDocument(doc);
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DocumentDetailScreen(document: doc),
+      ),
+    );
+  }
+
+  /// ID Card Mode Logic: Guides front then back, then stitches onto A4 page
+  Future<void> _handleIdCardCapture(XFile photo) async {
+    if (_isIdCardFront) {
+      final savedPath = await _saveCapturedFile(photo, 'id_front');
+      setState(() {
+        _idCardFrontPath = savedPath;
+        _isIdCardFront = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Front side saved! Now flip and align the BACK side of ID card.'),
+            duration: Duration(seconds: 3),
+            backgroundColor: AppTheme.primary,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } else {
+      final savedPath = await _saveCapturedFile(photo, 'id_back');
+      _idCardBackPath = savedPath;
+      await _stitchIdCard();
+    }
+  }
+
+  Future<void> _stitchIdCard() async {
+    if (_idCardFrontPath == null || _idCardBackPath == null) return;
+
+    // Show stitching dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(color: AppTheme.primary),
+              SizedBox(width: 20),
+              Expanded(
+                child: Text(
+                  'Stitching ID Card to 2-in-1 A4 Page...',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final frontBytes = await File(_idCardFrontPath!).readAsBytes();
+      final backBytes = await File(_idCardBackPath!).readAsBytes();
+
+      img.Image? frontImg = img.decodeImage(frontBytes);
+      img.Image? backImg = img.decodeImage(backBytes);
+
+      if (frontImg != null && backImg != null) {
+        const canvasWidth = 1240;
+        const canvasHeight = 1754;
+        final canvas = img.Image(width: canvasWidth, height: canvasHeight);
+        img.fill(canvas, color: img.ColorRgb8(255, 255, 255));
+
+        const targetWidth = 1000;
+        final scaledFront = img.copyResize(frontImg, width: targetWidth);
+        final scaledBack = img.copyResize(backImg, width: targetWidth);
+
+        final frontX = (canvasWidth - scaledFront.width) ~/ 2;
+        const frontY = 140;
+        img.compositeImage(canvas, scaledFront, dstX: frontX, dstY: frontY);
+
+        final backX = (canvasWidth - scaledBack.width) ~/ 2;
+        const backY = 900;
+        img.compositeImage(canvas, scaledBack, dstX: backX, dstY: backY);
+
+        final appDir = await getApplicationDocumentsDirectory();
+        final scansDir = Directory(p.join(appDir.path, 'scancraft_images'));
+        if (!await scansDir.exists()) await scansDir.create(recursive: true);
+
+        final outputPath = p.join(
+          scansDir.path,
+          'id_card_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        );
+        final jpgBytes = img.encodeJpg(canvas, quality: 90);
+        await File(outputPath).writeAsBytes(jpgBytes);
+
+        String finalPath = outputPath;
+        if (_autoMagicColor) {
+          finalPath = await FilterService.applyFilter(
+            imagePath: outputPath,
+            filterType: DocumentFilterType.magicColor,
+          );
+        }
+
+        final now = DateTime.now();
+        final doc = ScannedDocument(
+          id: now.millisecondsSinceEpoch.toString(),
+          title: 'ID Card ${now.day}-${now.month}',
+          pagePaths: [finalPath],
+          createdAt: now,
+          updatedAt: now,
+          tag: 'ID Cards',
+        );
+
+        await _storageService.saveDocument(doc);
+
+        if (!mounted) return;
+        Navigator.pop(context); // Close dialog
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => DocumentDetailScreen(document: doc),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      print('ID stitch error: $e');
+    }
+  }
+
+  /// OCR Mode Logic: Captures 1 page and opens OCR Text Result
+  Future<void> _handleOcrCapture(XFile photo) async {
+    final savedPath = await _saveCapturedFile(photo, 'ocr_source');
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(color: AppTheme.primary),
+              SizedBox(width: 20),
+              Expanded(
+                child: Text(
+                  'Recognizing text with OCR...',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final extractedText = await _ocrService.extractText(savedPath);
+
+    if (!mounted) return;
+    Navigator.pop(context); // Close dialog
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => OcrResultScreen(
+          text: extractedText,
+          documentTitle: 'OCR Scan ${DateTime.now().day}/${DateTime.now().month}',
+        ),
+      ),
+    );
+  }
+
   Future<void> _pickFromGallery() async {
     try {
-      final List<XFile> picked = await _picker.pickMultiImage();
-      if (picked.isEmpty) return;
+      if (_currentMode == CameraScanMode.batch) {
+        final List<XFile> picked = await _picker.pickMultiImage();
+        if (picked.isEmpty) return;
 
-      final appDir = await getApplicationDocumentsDirectory();
-      final scansDir = Directory(p.join(appDir.path, 'scancraft_images'));
-      if (!await scansDir.exists()) {
-        await scansDir.create(recursive: true);
+        final appDir = await getApplicationDocumentsDirectory();
+        final scansDir = Directory(p.join(appDir.path, 'scancraft_images'));
+        if (!await scansDir.exists()) await scansDir.create(recursive: true);
+
+        for (var f in picked) {
+          final fileName = 'batch_gallery_${DateTime.now().millisecondsSinceEpoch}_${p.basename(f.path)}';
+          final saved = await File(f.path).copy(p.join(scansDir.path, fileName));
+          _capturedPages.add(saved.path);
+        }
+        setState(() {});
+      } else {
+        final XFile? picked = await _picker.pickImage(source: ImageSource.gallery);
+        if (picked == null) return;
+        if (_currentMode == CameraScanMode.single) {
+          await _handleSingleCapture(picked);
+        } else if (_currentMode == CameraScanMode.ocr) {
+          await _handleOcrCapture(picked);
+        }
       }
-
-      for (var f in picked) {
-        final fileName = 'batch_gallery_${DateTime.now().millisecondsSinceEpoch}_${p.basename(f.path)}';
-        final saved = await File(f.path).copy(p.join(scansDir.path, fileName));
-        _capturedPages.add(saved.path);
-      }
-
-      setState(() {});
     } catch (e) {
-      print('Gallery import in batch error: $e');
+      print('Gallery import error: $e');
     }
   }
 
@@ -226,7 +487,10 @@ class _BatchCameraScreenState extends State<BatchCameraScreen> with WidgetsBindi
                           ),
                           TextButton.icon(
                             icon: const Icon(Icons.check, color: AppTheme.primary),
-                            label: const Text('Done & Process', style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold)),
+                            label: const Text(
+                              'Done & Process',
+                              style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
+                            ),
                             onPressed: () {
                               Navigator.pop(context);
                               _finishBatch();
@@ -264,7 +528,7 @@ class _BatchCameraScreenState extends State<BatchCameraScreen> with WidgetsBindi
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                     decoration: BoxDecoration(
-                                      color: Colors.black.withOpacity(0.65),
+                                      color: Colors.black.withValues(alpha: 0.65),
                                       borderRadius: BorderRadius.circular(6),
                                     ),
                                     child: Text(
@@ -312,6 +576,7 @@ class _BatchCameraScreenState extends State<BatchCameraScreen> with WidgetsBindi
     );
   }
 
+  /// Completes batch scanning when user taps "Done"
   Future<void> _finishBatch() async {
     if (_capturedPages.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -322,7 +587,6 @@ class _BatchCameraScreenState extends State<BatchCameraScreen> with WidgetsBindi
 
     List<String> finalPages = List.from(_capturedPages);
 
-    // Apply Magic Color automatically if toggled ON
     if (_autoMagicColor) {
       showDialog(
         context: context,
@@ -385,13 +649,17 @@ class _BatchCameraScreenState extends State<BatchCameraScreen> with WidgetsBindi
   }
 
   Future<bool> _onWillPop() async {
-    if (_capturedPages.isEmpty) return true;
+    if (_capturedPages.isEmpty && (_idCardFrontPath == null)) return true;
 
     final discard = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Discard Scanned Pages?'),
-        content: Text('You have captured ${_capturedPages.length} pages. Are you sure you want to discard them?'),
+        title: const Text('Discard Scanned Work?'),
+        content: Text(
+          _currentMode == CameraScanMode.batch
+              ? 'You have ${_capturedPages.length} pages scanned. Discard them?'
+              : 'Discard current scanned photo?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -420,7 +688,7 @@ class _BatchCameraScreenState extends State<BatchCameraScreen> with WidgetsBindi
     }
 
     return PopScope(
-      canPop: _capturedPages.isEmpty,
+      canPop: _capturedPages.isEmpty && _idCardFrontPath == null,
       onPopInvokedWithResult: (didPop, result) async {
         if (!didPop) {
           final shouldPop = await _onWillPop();
@@ -442,27 +710,19 @@ class _BatchCameraScreenState extends State<BatchCameraScreen> with WidgetsBindi
               ),
             ),
 
-            // Document Guide Frame (subtle overlay)
-            IgnorePointer(
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 100),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.35),
-                    width: 1.5,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-            ),
+            // Optional 3x3 Grid Overlay
+            if (_showGrid) _buildGridOverlay(),
 
-            // Shutter flash effect
+            // Mode-specific Viewfinder Guides
+            _buildViewfinderGuide(),
+
+            // Shutter Flash Animation Effect
             if (_showShutterFlash)
               Container(
                 color: Colors.white.withValues(alpha: 0.65),
               ),
 
-            // Top Control Bar
+            // Top Control Bar (Close, Torch, Magic Color, Grid, Flip)
             Positioned(
               top: MediaQuery.of(context).padding.top + 8,
               left: 16,
@@ -470,25 +730,18 @@ class _BatchCameraScreenState extends State<BatchCameraScreen> with WidgetsBindi
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Back button
                   _buildGlassCircleButton(
                     icon: Icons.close,
                     onTap: () async {
-                      if (_capturedPages.isEmpty) {
+                      final shouldPop = await _onWillPop();
+                      if (shouldPop && context.mounted) {
                         Navigator.pop(context);
-                      } else {
-                        final shouldPop = await _onWillPop();
-                        if (shouldPop && context.mounted) {
-                          Navigator.pop(context);
-                        }
                       }
                     },
                   ),
-
-                  // Center Pills: Magic Color Toggle & Batch Indicator
                   Row(
                     children: [
-                      // Torch Toggle
+                      // Torch Toggle (Persistent Lock)
                       _buildGlassCircleButton(
                         icon: _flashMode == FlashMode.torch ? Icons.flash_on : Icons.flash_off,
                         color: _flashMode == FlashMode.torch ? Colors.amber : Colors.white,
@@ -496,15 +749,19 @@ class _BatchCameraScreenState extends State<BatchCameraScreen> with WidgetsBindi
                       ),
                       const SizedBox(width: 8),
 
-                      // Auto Magic Color Pill
+                      // Grid lines toggle
+                      _buildGlassCircleButton(
+                        icon: _showGrid ? Icons.grid_on : Icons.grid_off,
+                        color: _showGrid ? AppTheme.primary : Colors.white,
+                        onTap: () => setState(() => _showGrid = !_showGrid),
+                      ),
+                      const SizedBox(width: 8),
+
+                      // Magic Color Toggle Pill
                       GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _autoMagicColor = !_autoMagicColor;
-                          });
-                        },
+                        onTap: () => setState(() => _autoMagicColor = !_autoMagicColor),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                           decoration: BoxDecoration(
                             color: _autoMagicColor
                                 ? AppTheme.primary.withValues(alpha: 0.85)
@@ -523,7 +780,7 @@ class _BatchCameraScreenState extends State<BatchCameraScreen> with WidgetsBindi
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                'Magic Color ${_autoMagicColor ? 'ON' : 'OFF'}',
+                                _autoMagicColor ? 'Magic Color' : 'Original',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 12,
@@ -537,207 +794,457 @@ class _BatchCameraScreenState extends State<BatchCameraScreen> with WidgetsBindi
                     ],
                   ),
 
-                  // Switch Camera
+                  // Camera Flip
                   if (_cameras.length > 1)
                     _buildGlassCircleButton(
                       icon: Icons.flip_camera_ios,
                       onTap: _switchCamera,
                     )
                   else
-                    const SizedBox(width: 40),
+                    const SizedBox(width: 42),
                 ],
               ),
             ),
 
-            // Continuous Batch Info Strip
+            // Top Status / Guide Pill
             Positioned(
               top: MediaQuery.of(context).padding.top + 64,
               left: 20,
               right: 20,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.flash_on, color: Colors.amber, size: 14),
-                      const SizedBox(width: 4),
-                      Text(
-                        _flashMode == FlashMode.torch
-                            ? 'Torch Locked ON • Flip pages and tap shutter'
-                            : 'Continuous Batch Scan • Ready to shoot',
-                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              child: Center(child: _buildTopGuidePill()),
             ),
 
-            // Bottom Shutter & Thumbnail Controls
+            // Bottom Control Container (CamScanner Style: Modes Above Shutter)
             Positioned(
-              bottom: 30,
-              left: 20,
-              right: 20,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Left: Import from Gallery Button
-                  GestureDetector(
-                    onTap: _pickFromGallery,
-                    child: Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white24, width: 1.5),
-                      ),
-                      child: const Icon(Icons.photo_library, color: Colors.white, size: 24),
-                    ),
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                padding: const EdgeInsets.only(top: 14, bottom: 28),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.8),
+                      Colors.black,
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
                   ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // CamScanner Horizontal Mode Selector Bar
+                    _buildModeSelectorBar(),
+                    const SizedBox(height: 18),
 
-                  // Center: Huge Tactile Shutter Button
-                  GestureDetector(
-                    onTap: _takePicture,
-                    child: Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 4),
-                      ),
-                      padding: const EdgeInsets.all(4),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: _isCapturing ? AppTheme.primary.withValues(alpha: 0.5) : Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                        child: _isCapturing
-                            ? const Center(
-                                child: SizedBox(
-                                  width: 28,
-                                  height: 28,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 3,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              )
-                            : null,
-                      ),
-                    ),
-                  ),
-
-                  // Right: Scanned Thumbnail Tray with Count Badge & Done Action
-                  _capturedPages.isNotEmpty
-                      ? GestureDetector(
-                          onTap: _showScannedPagesPreview,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              // Last Scanned Image Thumbnail Box
-                              Container(
-                                width: 54,
-                                height: 54,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: AppTheme.primary, width: 2.5),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.4),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                clipBehavior: Clip.antiAlias,
-                                child: Image.file(
-                                  File(_capturedPages.last),
-                                  fit: BoxFit.cover,
-                                ),
+                    // Shutter Row: Gallery | Big Shutter | Thumbnail Stack & Done
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          // Left: Gallery Import Button
+                          GestureDetector(
+                            onTap: _pickFromGallery,
+                            child: Container(
+                              width: 50,
+                              height: 50,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.12),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white24, width: 1.5),
                               ),
-
-                              // Page Count Badge (Green Pill)
-                              Positioned(
-                                top: -8,
-                                right: -8,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.primary,
-                                    borderRadius: BorderRadius.circular(12),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withValues(alpha: 0.3),
-                                        blurRadius: 4,
-                                      ),
-                                    ],
-                                  ),
-                                  child: Text(
-                                    '${_capturedPages.length}',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : Container(
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.35),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white12, width: 1.5),
-                          ),
-                          child: const Center(
-                            child: Text(
-                              '0',
-                              style: TextStyle(color: Colors.white38, fontWeight: FontWeight.bold),
+                              child: const Icon(Icons.photo_library, color: Colors.white, size: 24),
                             ),
                           ),
-                        ),
-                ],
-              ),
-            ),
 
-            // Persistent Floating "Done (N)" Pill Button when pages > 0
-            if (_capturedPages.isNotEmpty)
-              Positioned(
-                bottom: 120,
-                right: 20,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
+                          // Center: CamScanner Tactile Circular Shutter Button
+                          GestureDetector(
+                            onTap: _onShutterTap,
+                            child: Container(
+                              width: 82,
+                              height: 82,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 4),
+                              ),
+                              padding: const EdgeInsets.all(5),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: _isCapturing
+                                      ? AppTheme.primary.withValues(alpha: 0.6)
+                                      : (_currentMode == CameraScanMode.idCard
+                                          ? const Color(0xFF0284C7)
+                                          : AppTheme.primary),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: _isCapturing
+                                    ? const Center(
+                                        child: SizedBox(
+                                          width: 26,
+                                          height: 26,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 3,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      )
+                                    : null,
+                              ),
+                            ),
+                          ),
+
+                          // Right: Batch Corner Thumbnail Stack with Live Counter & Done Action
+                          _buildRightActionSlot(),
+                        ],
+                      ),
                     ),
-                    elevation: 6,
-                  ),
-                  icon: const Icon(Icons.check, size: 18),
-                  label: Text(
-                    'Done (${_capturedPages.length})',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                  onPressed: _finishBatch,
+                  ],
                 ),
               ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  /// Viewfinder Guidelines per mode
+  Widget _buildViewfinderGuide() {
+    if (_currentMode == CameraScanMode.idCard) {
+      return Center(
+        child: Container(
+          width: 320,
+          height: 200,
+          decoration: BoxDecoration(
+            border: Border.all(color: const Color(0xFF0284C7), width: 2.5),
+            borderRadius: BorderRadius.circular(16),
+            color: Colors.black.withValues(alpha: 0.05),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.badge_outlined,
+                size: 38,
+                color: Colors.white.withValues(alpha: 0.65),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _isIdCardFront ? 'Align ID Card Front Here' : 'Align ID Card Back Here',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // CamScanner-style sleek corner brackets for Batch / Single / OCR
+    return IgnorePointer(
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 28, vertical: 110),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Stack(
+            children: [
+              // 4 Corner Brackets
+              Positioned(top: 0, left: 0, child: _cornerBracket(isTop: true, isLeft: true)),
+              Positioned(top: 0, right: 0, child: _cornerBracket(isTop: true, isLeft: false)),
+              Positioned(bottom: 0, left: 0, child: _cornerBracket(isTop: false, isLeft: true)),
+              Positioned(bottom: 0, right: 0, child: _cornerBracket(isTop: false, isLeft: false)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _cornerBracket({required bool isTop, required bool isLeft}) {
+    return Container(
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        border: Border(
+          top: isTop ? const BorderSide(color: AppTheme.primary, width: 3.5) : BorderSide.none,
+          bottom: !isTop ? const BorderSide(color: AppTheme.primary, width: 3.5) : BorderSide.none,
+          left: isLeft ? const BorderSide(color: AppTheme.primary, width: 3.5) : BorderSide.none,
+          right: !isLeft ? const BorderSide(color: AppTheme.primary, width: 3.5) : BorderSide.none,
+        ),
+      ),
+    );
+  }
+
+  /// 3x3 Grid Overlay
+  Widget _buildGridOverlay() {
+    return IgnorePointer(
+      child: Column(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(child: Container(decoration: BoxDecoration(border: Border.all(color: Colors.white12)))),
+                Expanded(child: Container(decoration: BoxDecoration(border: Border.all(color: Colors.white12)))),
+                Expanded(child: Container(decoration: BoxDecoration(border: Border.all(color: Colors.white12)))),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(child: Container(decoration: BoxDecoration(border: Border.all(color: Colors.white12)))),
+                Expanded(child: Container(decoration: BoxDecoration(border: Border.all(color: Colors.white12)))),
+                Expanded(child: Container(decoration: BoxDecoration(border: Border.all(color: Colors.white12)))),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(child: Container(decoration: BoxDecoration(border: Border.all(color: Colors.white12)))),
+                Expanded(child: Container(decoration: BoxDecoration(border: Border.all(color: Colors.white12)))),
+                Expanded(child: Container(decoration: BoxDecoration(border: Border.all(color: Colors.white12)))),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Informational Top Guide Pill
+  Widget _buildTopGuidePill() {
+    String text;
+    IconData icon;
+    Color iconColor;
+
+    switch (_currentMode) {
+      case CameraScanMode.batch:
+        if (_capturedPages.isEmpty) {
+          text = 'Batch Scan • Flip pages and tap shutter continuously';
+          icon = Icons.filter_none;
+          iconColor = const Color(0xFF10B981);
+        } else {
+          text = '${_capturedPages.length} pages captured • Tap "Done" when finished';
+          icon = Icons.check_circle_outline;
+          iconColor = AppTheme.primary;
+        }
+        break;
+      case CameraScanMode.single:
+        text = 'Single Scan • 1 photo will create document';
+        icon = Icons.camera_alt;
+        iconColor = Colors.white;
+        break;
+      case CameraScanMode.idCard:
+        text = _isIdCardFront ? 'Step 1/2: Scan ID Front' : 'Step 2/2: Scan ID Back';
+        icon = Icons.badge_outlined;
+        iconColor = const Color(0xFF0284C7);
+        break;
+      case CameraScanMode.ocr:
+        text = 'OCR Mode • Captures and extracts editable text';
+        icon = Icons.text_fields;
+        iconColor = const Color(0xFF8B5CF6);
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: iconColor, size: 14),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// CamScanner Mode Switcher Bar above Shutter
+  Widget _buildModeSelectorBar() {
+    final modes = [
+      (CameraScanMode.idCard, 'ID CARD'),
+      (CameraScanMode.single, 'SINGLE'),
+      (CameraScanMode.batch, 'BATCH'),
+      (CameraScanMode.ocr, 'OCR'),
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: modes.map((m) {
+          final isSelected = _currentMode == m.$1;
+          return GestureDetector(
+            onTap: () {
+              setState(() {
+                _currentMode = m.$1;
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: isSelected ? AppTheme.primary.withValues(alpha: 0.25) : Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isSelected ? AppTheme.primary : Colors.transparent,
+                  width: 1.2,
+                ),
+              ),
+              child: Text(
+                m.$2,
+                style: TextStyle(
+                  color: isSelected ? AppTheme.primary : Colors.white70,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                  fontSize: 13,
+                  letterSpacing: 0.6,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  /// Right slot next to shutter:
+  /// In Batch mode -> Corner Thumbnail Stack + "Done" Button
+  /// In other modes -> Reset or placeholder
+  Widget _buildRightActionSlot() {
+    if (_currentMode == CameraScanMode.batch) {
+      if (_capturedPages.isNotEmpty) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Thumbnail Stack with Counter Badge
+            GestureDetector(
+              onTap: _showScannedPagesPreview,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.primary, width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          blurRadius: 4,
+                        ),
+                      ],
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Image.file(
+                      File(_capturedPages.last),
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  Positioned(
+                    top: -6,
+                    right: -6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '${_capturedPages.length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+
+            // CamScanner Signature "Done (N) →" Button
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                elevation: 4,
+              ),
+              onPressed: _finishBatch,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.check, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Done (${_capturedPages.length})',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      } else {
+        return Container(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white12, width: 1.5),
+          ),
+          child: const Center(
+            child: Text(
+              '0',
+              style: TextStyle(color: Colors.white38, fontWeight: FontWeight.bold),
+            ),
+          ),
+        );
+      }
+    } else if (_currentMode == CameraScanMode.idCard && !_isIdCardFront) {
+      // ID Card mode: restart front side button if needed
+      return TextButton.icon(
+        style: TextButton.styleFrom(foregroundColor: Colors.amber),
+        onPressed: () {
+          setState(() {
+            _idCardFrontPath = null;
+            _idCardBackPath = null;
+            _isIdCardFront = true;
+          });
+        },
+        icon: const Icon(Icons.restart_alt, size: 16),
+        label: const Text('Reset', style: TextStyle(fontSize: 12)),
+      );
+    }
+
+    return const SizedBox(width: 50, height: 50);
   }
 
   Widget _buildGlassCircleButton({

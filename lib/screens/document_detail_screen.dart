@@ -743,7 +743,10 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
       final added = await Navigator.push<List<String>>(
         context,
         MaterialPageRoute(
-          builder: (context) => BatchCameraScreen(targetDocument: _doc),
+          builder: (context) => BatchCameraScreen(
+            initialMode: CameraScanMode.batch,
+            targetDocument: _doc,
+          ),
         ),
       );
       if (added != null && added.isNotEmpty) {
@@ -751,7 +754,19 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
       }
       return;
     } else if (option == 'single') {
-      newPaths = await _scannerService.startDocumentScan(pageLimit: 20);
+      final added = await Navigator.push<List<String>>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => BatchCameraScreen(
+            initialMode: CameraScanMode.single,
+            targetDocument: _doc,
+          ),
+        ),
+      );
+      if (added != null && added.isNotEmpty) {
+        setState(() {});
+      }
+      return;
     } else if (option == 'gallery') {
       newPaths = await _scannerService.pickFromGallery();
     }

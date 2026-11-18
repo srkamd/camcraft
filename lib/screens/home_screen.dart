@@ -11,7 +11,6 @@ import '../theme/app_theme.dart';
 import '../widgets/document_card.dart';
 import 'batch_camera_screen.dart';
 import 'document_detail_screen.dart';
-import 'id_card_scanner_screen.dart';
 import 'qr_scanner_screen.dart';
 import 'about_screen.dart';
 
@@ -38,9 +37,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isSelectionMode = false;
   final Set<String> _selectedDocIds = {};
 
-  // View Mode & Speed-Dial FAB
+  // View Mode
   bool _isGridView = false;
-  bool _isFabExpanded = false;
 
   String _selectedTag = 'All';
   final TextEditingController _searchController = TextEditingController();
@@ -141,30 +139,14 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _startDocumentScan() async {
-    final pagePaths = await _scannerService.startDocumentScan();
-    if (pagePaths.isNotEmpty) {
-      final now = DateTime.now();
-      final newDoc = ScannedDocument(
-        id: now.millisecondsSinceEpoch.toString(),
-        title: 'Document ${now.day}-${now.month} ${now.hour}:${now.minute}',
-        pagePaths: pagePaths,
-        createdAt: now,
-        updatedAt: now,
-        tag: 'Docs',
-      );
-
-      await _storageService.saveDocument(newDoc);
-      await _loadDocuments();
-
-      if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => DocumentDetailScreen(document: newDoc),
-        ),
-      ).then((_) => _loadDocuments());
-    }
+  Future<void> _startDocumentScan({CameraScanMode mode = CameraScanMode.single}) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BatchCameraScreen(initialMode: mode),
+      ),
+    );
+    _loadDocuments();
   }
 
   /// Continuous Batch Scan Mode:
@@ -174,7 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => const BatchCameraScreen(),
+        builder: (context) => const BatchCameraScreen(initialMode: CameraScanMode.batch),
       ),
     );
     _loadDocuments();
@@ -240,7 +222,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openIdCardMode() async {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const IdCardScannerScreen()),
+      MaterialPageRoute(builder: (context) => const BatchCameraScreen(initialMode: CameraScanMode.idCard)),
     );
     _loadDocuments();
   }
@@ -678,120 +660,18 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       floatingActionButton: _isSelectionMode
           ? null
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (_isFabExpanded) ...[
-                  _buildFabActionItem(
-                    label: 'Batch Scan',
-                    icon: Icons.filter_none,
-                    color: const Color(0xFF10B981),
-                    onTap: () {
-                      setState(() => _isFabExpanded = false);
-                      _startBatchScan();
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _buildFabActionItem(
-                    label: 'ID Card Mode',
-                    icon: Icons.badge_outlined,
-                    color: const Color(0xFF6366F1),
-                    onTap: () {
-                      setState(() => _isFabExpanded = false);
-                      _openIdCardMode();
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _buildFabActionItem(
-                    label: 'Import Photos',
-                    icon: Icons.photo_library,
-                    color: const Color(0xFFF59E0B),
-                    onTap: () {
-                      setState(() => _isFabExpanded = false);
-                      _importFromGallery();
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _buildFabActionItem(
-                    label: 'Single Scan',
-                    icon: Icons.camera_alt,
-                    color: AppTheme.primary,
-                    onTap: () {
-                      setState(() => _isFabExpanded = false);
-                      _startDocumentScan();
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                FloatingActionButton(
-                  heroTag: 'main_fab',
-                  backgroundColor: _isFabExpanded ? Colors.grey.shade800 : AppTheme.primary,
-                  elevation: 6,
-                  onPressed: () => setState(() => _isFabExpanded = !_isFabExpanded),
-                  child: AnimatedRotation(
-                    turns: _isFabExpanded ? 0.375 : 0,
-                    duration: const Duration(milliseconds: 250),
-                    child: Icon(
-                      _isFabExpanded ? Icons.close : Icons.camera_alt,
-                      color: Colors.white,
-                      size: 26,
-                    ),
-                  ),
-                ),
-              ],
+          : FloatingActionButton(
+              heroTag: 'main_fab',
+              backgroundColor: AppTheme.primary,
+              elevation: 6,
+              tooltip: 'Scan Documents',
+              onPressed: _startBatchScan,
+              child: const Icon(
+                Icons.camera_alt,
+                color: Colors.white,
+                size: 28,
+              ),
             ),
-    );
-  }
-
-  Widget _buildFabActionItem({
-    required String label,
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.12),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Text(
-              label,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.4),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Icon(icon, color: Colors.white, size: 22),
-          ),
-        ],
-      ),
     );
   }
 
