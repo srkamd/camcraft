@@ -3,11 +3,13 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import '../models/scanned_document.dart';
+import '../services/filter_service.dart';
 import '../services/ocr_service.dart';
 import '../services/pdf_service.dart';
 import '../services/scanner_service.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
+import 'batch_camera_screen.dart';
 import 'ocr_result_screen.dart';
 import 'signature_screen.dart';
 
@@ -436,6 +438,170 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     }
   }
 
+  /// Show Document Filter & Auto-Enhance Bottom Sheet
+  Future<void> _showFilterSheet() async {
+    if (_doc.pagePaths.isEmpty) return;
+
+    DocumentFilterType selectedFilter = DocumentFilterType.magicColor;
+    bool applyToAll = false;
+
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Enhance Document & Filters',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: DocumentFilterType.values.map((f) {
+                        final isSelected = selectedFilter == f;
+                        return ChoiceChip(
+                          avatar: Icon(
+                            f == DocumentFilterType.magicColor
+                                ? Icons.auto_fix_high
+                                : f == DocumentFilterType.blackAndWhite
+                                    ? Icons.contrast
+                                    : f == DocumentFilterType.grayscale
+                                        ? Icons.filter_b_and_w
+                                        : Icons.image,
+                            size: 16,
+                            color: isSelected ? Colors.white : Colors.black87,
+                          ),
+                          label: Text(FilterService.getFilterName(f)),
+                          selected: isSelected,
+                          selectedColor: AppTheme.primary,
+                          labelStyle: TextStyle(
+                            color: isSelected ? Colors.white : Colors.black87,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          ),
+                          onSelected: (val) {
+                            if (val) {
+                              setSheetState(() => selectedFilter = f);
+                            }
+                          },
+                        );
+                      }).toList(),
+                    ),
+                    if (_doc.pagePaths.length > 1) ...[
+                      const SizedBox(height: 16),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Apply to all pages in this document'),
+                        subtitle: Text('${_doc.pagePaths.length} pages will be enhanced'),
+                        value: applyToAll,
+                        activeThumbColor: AppTheme.primary,
+                        onChanged: (val) {
+                          setSheetState(() => applyToAll = val);
+                        },
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primary,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        icon: const Icon(Icons.check, color: Colors.white),
+                        label: const Text(
+                          'Apply Filter',
+                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(context, {
+                            'filter': selectedFilter,
+                            'applyToAll': applyToAll,
+                          });
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null) return;
+
+    final filter = result['filter'] as DocumentFilterType;
+    final all = result['applyToAll'] as bool;
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(color: AppTheme.primary),
+              SizedBox(width: 20),
+              Text('Applying document filter...'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      if (all) {
+        final newPaths = await FilterService.applyFilterToBatch(
+          imagePaths: _doc.pagePaths,
+          filterType: filter,
+        );
+        setState(() {
+          _doc.pagePaths = newPaths;
+          _doc.updatedAt = DateTime.now();
+        });
+      } else {
+        final currentPath = _doc.pagePaths[_selectedPageIndex];
+        final newPath = await FilterService.applyFilter(
+          imagePath: currentPath,
+          filterType: filter,
+        );
+        setState(() {
+          _doc.pagePaths[_selectedPageIndex] = newPath;
+          _doc.updatedAt = DateTime.now();
+        });
+      }
+      await _storageService.updateDocument(_doc);
+    } catch (e) {
+      print('Error applying filter: $e');
+    } finally {
+      if (mounted) Navigator.pop(context); // Close loading dialog
+    }
+  }
+
   Future<void> _addMorePages() async {
     final option = await showModalBottomSheet<String>(
       context: context,
@@ -490,7 +656,16 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
 
     List<String> newPaths = [];
     if (option == 'batch') {
-      newPaths = await _scannerService.startBatchScan(pageLimit: 100);
+      final added = await Navigator.push<List<String>>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => BatchCameraScreen(targetDocument: _doc),
+        ),
+      );
+      if (added != null && added.isNotEmpty) {
+        setState(() {});
+      }
+      return;
     } else if (option == 'single') {
       newPaths = await _scannerService.startDocumentScan(pageLimit: 20);
     } else if (option == 'gallery') {
@@ -584,12 +759,18 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                   ),
                 ),
 
-                // Page Actions Row: Rotate, E-Sign, OCR, Delete
+                // Page Actions Row: Filters, E-Sign, Rotate, OCR, Delete
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
+                      _buildActionButton(
+                        icon: Icons.auto_fix_high,
+                        label: 'Filters',
+                        color: AppTheme.primary,
+                        onTap: _showFilterSheet,
+                      ),
                       _buildActionButton(
                         icon: Icons.draw_outlined,
                         label: 'E-Sign',

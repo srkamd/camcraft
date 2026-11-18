@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import '../models/scanned_document.dart';
+import '../services/filter_service.dart';
 import '../services/pdf_service.dart';
 import '../services/scanner_service.dart';
 import '../services/security_service.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/document_card.dart';
+import 'batch_camera_screen.dart';
 import 'document_detail_screen.dart';
 import 'id_card_scanner_screen.dart';
 import 'qr_scanner_screen.dart';
@@ -140,51 +142,58 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Batch Scan Mode:
-  /// Allows users to continuously scan dozens of document pages, books, contracts, receipts,
-  /// with automatic edge detection, automatic cropping, filters, and saves them into one unified file.
+  /// Continuous Batch Scan Mode:
+  /// Keeps camera live, persists torch/flash across multiple scans, adds captured pages
+  /// to a floating thumbnail tray with live counter badge, and processes all pages together.
   Future<void> _startBatchScan() async {
-    final pagePaths = await _scannerService.startBatchScan(pageLimit: 100);
-    if (pagePaths.isNotEmpty) {
-      final now = DateTime.now();
-      final newDoc = ScannedDocument(
-        id: now.millisecondsSinceEpoch.toString(),
-        title: 'Batch Scan (${pagePaths.length} pages) ${now.day}-${now.month}',
-        pagePaths: pagePaths,
-        createdAt: now,
-        updatedAt: now,
-        tag: 'Docs',
-      );
-
-      await _storageService.saveDocument(newDoc);
-      await _loadDocuments();
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('⚡ Batch Scan Complete! Captured ${pagePaths.length} pages.'),
-          backgroundColor: AppTheme.primary,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => DocumentDetailScreen(document: newDoc),
-        ),
-      ).then((_) => _loadDocuments());
-    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const BatchCameraScreen(),
+      ),
+    );
+    _loadDocuments();
   }
 
+  /// Import photos from gallery with automatic Magic Color enhancement
   Future<void> _importFromGallery() async {
     final pagePaths = await _scannerService.pickFromGallery();
     if (pagePaths.isNotEmpty) {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const PopScope(
+          canPop: false,
+          child: AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(color: AppTheme.primary),
+                SizedBox(width: 20),
+                Expanded(
+                  child: Text(
+                    'Auto-enhancing images with Magic Color...',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final enhancedPaths = await FilterService.applyFilterToBatch(
+        imagePaths: pagePaths,
+        filterType: DocumentFilterType.magicColor,
+      );
+
+      if (mounted) Navigator.pop(context); // Close loading dialog
+
       final now = DateTime.now();
       final newDoc = ScannedDocument(
         id: now.millisecondsSinceEpoch.toString(),
-        title: 'Imported ${now.day}-${now.month}',
-        pagePaths: pagePaths,
+        title: 'Imported (${enhancedPaths.length} pages) ${now.day}-${now.month}',
+        pagePaths: enhancedPaths,
         createdAt: now,
         updatedAt: now,
         tag: 'Docs',
